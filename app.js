@@ -29,6 +29,7 @@
     selectedRowIndex: 0,
     filter: 'all',
     librariesReady: false,
+    initPromise: null,
   };
 
   const els = {};
@@ -95,60 +96,101 @@
   }
 
   function waitForGoogleLibraries() {
-    const startedAt = Date.now();
-    const timer = window.setInterval(() => {
-      if (window.google && window.google.accounts && window.gapi) {
-        window.clearInterval(timer);
-        loadGoogleApiClient();
-        return;
-      }
-
-      if (Date.now() - startedAt > 10000) {
-        window.clearInterval(timer);
-        setNotice('Google APIライブラリを読み込めませんでした。ネットワークまたは広告ブロック設定を確認してください。');
-      }
-    }, 100);
-  }
-
-  function loadGoogleApiClient() {
-    window.gapi.load('client', async () => {
-      try {
-        if (!isConfigReady()) {
-          state.librariesReady = true;
-          updateUiState();
-          return;
-        }
-
-        await window.gapi.client.init({
-          discoveryDocs: [
-            'https://sheets.googleapis.com/$discovery/rest?version=v4',
-            'https://gmail.googleapis.com/$discovery/rest?version=v1',
-          ],
-        });
-
-        state.tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: CONFIG.googleClientId,
-          scope: SCOPES,
-          hd: getHostedDomainHint(),
-          callback: handleTokenResponse,
-        });
-
-        state.librariesReady = true;
-        updateUiState();
-      } catch (error) {
-        setNotice('Google APIの初期化に失敗しました: ' + getErrorMessage(error));
-      }
+    ensureGoogleApiReady().catch((error) => {
+      setNotice(getErrorMessage(error));
     });
   }
 
-  function authorize() {
+  function ensureGoogleApiReady() {
+    if (state.librariesReady && state.tokenClient) {
+      return Promise.resolve();
+    }
+
+    if (state.initPromise) {
+      return state.initPromise;
+    }
+
+    state.initPromise = waitForGoogleGlobals()
+      .then(loadGoogleApiClient)
+      .catch((error) => {
+        state.initPromise = null;
+        throw error;
+      });
+
+    return state.initPromise;
+  }
+
+  function waitForGoogleGlobals() {
+    return new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        if (window.google && window.google.accounts && window.gapi) {
+          window.clearInterval(timer);
+          resolve();
+          return;
+        }
+
+        if (Date.now() - startedAt > 15000) {
+          window.clearInterval(timer);
+          reject(new Error('Google APIライブラリを読み込めませんでした。ページを再読み込みするか、ネットワーク・広告ブロック設定を確認してください。'));
+        }
+      }, 100);
+    });
+  }
+
+  function loadGoogleApiClient() {
+    return new Promise((resolve, reject) => {
+      window.gapi.load('client', async () => {
+        try {
+          if (!isConfigReady()) {
+            state.librariesReady = true;
+            updateUiState();
+            resolve();
+            return;
+          }
+
+          await window.gapi.client.init({
+            discoveryDocs: [
+              'https://sheets.googleapis.com/$discovery/rest?version=v4',
+              'https://gmail.googleapis.com/$discovery/rest?version=v1',
+            ],
+          });
+
+          state.tokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: CONFIG.googleClientId,
+            scope: SCOPES,
+            hd: getHostedDomainHint(),
+            callback: handleTokenResponse,
+          });
+
+          state.librariesReady = true;
+          updateUiState();
+          resolve();
+        } catch (error) {
+          state.librariesReady = false;
+          state.tokenClient = null;
+          reject(new Error('Google APIの初期化に失敗しました: ' + getErrorMessage(error)));
+        }
+      });
+    });
+  }
+
+  async function authorize() {
     if (!isConfigReady()) {
       setNotice('先に config.js の googleClientId を設定してください。');
       return;
     }
 
-    if (!state.librariesReady || !state.tokenClient) {
-      setNotice('Google APIを準備中です。少し待ってからもう一度試してください。');
+    try {
+      setNotice('Google APIを準備しています...', 'success');
+      await ensureGoogleApiReady();
+    } catch (error) {
+      setNotice(getErrorMessage(error));
+      return;
+    }
+
+    if (!state.tokenClient) {
+      setNotice('Google認証の準備に失敗しました。ページを再読み込みしてください。');
       return;
     }
 
