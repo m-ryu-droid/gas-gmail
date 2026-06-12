@@ -452,8 +452,8 @@
       const rendered = renderMail(row);
       await createGmailDraft({
         to: testTo,
-        subject: '[TEST] ' + rendered.subject,
-        body: rendered.body,
+        subject: rendered.subject,
+        body: '【テスト】このメールはテストです。\n\n' + rendered.body,
       });
       setNotice('テスト下書きを作成しました。Gmailの下書きフォルダを確認してください。', 'success');
     } catch (error) {
@@ -541,8 +541,8 @@
       const rendered = renderMail(row);
       await sendGmailMessage({
         to: testTo,
-        subject: '[TEST] ' + rendered.subject,
-        body: rendered.body,
+        subject: rendered.subject,
+        body: '【テスト】このメールはテストです。\n\n' + rendered.body,
       });
       setNotice('テストメールを送信しました。受信箱を確認してください。', 'success');
     } catch (error) {
