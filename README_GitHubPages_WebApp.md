@@ -3,13 +3,13 @@
 GitHub Pagesで公開する、Gmail下書き作成前の確認用Webアプリです。
 
 この段階ではメール下書きの作成や送信は行いません。
-Googleログイン、スプレッドシート選択、`mail_recipients` シート読み込み、テンプレート保存、差し込みプレビューまでを行います。
+Googleログイン、スプレッドシートURL/IDからの読み込み、`mail_recipients` シート読み込み、テンプレート保存、差し込みプレビューまでを行います。
 
 ## できること
 
 - Googleアカウントでログイン
-- ログインユーザーがアクセスできるGoogleスプレッドシートだけ選択
-- 選択したブック内の `mail_recipients` シートだけ読み込み
+- ログインユーザーがアクセスできるGoogleスプレッドシートだけ読み込み
+- 入力したブック内の `mail_recipients` シートだけ読み込み
 - 宛先一覧をプレビュー
 - 件名、本文、署名テンプレートを編集
 - ログインユーザーごとにテンプレートをブラウザへ保存
@@ -35,7 +35,6 @@ GitHub Pagesには上記ファイルを置きます。
 ```js
 window.APP_CONFIG = {
   googleClientId: 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com',
-  googleApiKey: 'YOUR_GOOGLE_API_KEY',
   allowedSheetName: 'mail_recipients',
   allowedDomains: ['example.co.jp'],
   allowedEmails: [],
@@ -64,11 +63,12 @@ allowedEmails: ['person1@your-company.co.jp', 'person2@your-company.co.jp'],
 
 1. Google Cloud Consoleでプロジェクトを作成します。
 2. Google Sheets APIを有効化します。
-3. Google Drive APIを有効化します。
-4. API Keyを作成します。
-5. OAuth Client IDを作成します。
-6. アプリ種別は `Web application` を選びます。
-7. Authorized JavaScript originsにGitHub PagesのURLを登録します。
+3. OAuth Client IDを作成します。
+4. アプリ種別は `Web application` を選びます。
+5. Authorized JavaScript originsにGitHub PagesのURLを登録します。
+
+API Keyは使いません。
+Google Pickerも使わず、スプレッドシートURLまたはIDを画面に貼り付けて読み込みます。
 
 会社のGoogle Workspaceアカウントだけに閉じる場合は、OAuth同意画面のAudienceで `Internal` を選びます。
 これにより、会社のGoogle Workspace組織外のGoogleアカウントはOAuth認証を通れません。
@@ -100,11 +100,23 @@ http://localhost:8000
 openid
 email
 profile
-https://www.googleapis.com/auth/drive.metadata.readonly
 https://www.googleapis.com/auth/spreadsheets.readonly
 ```
 
-Driveはファイル選択とメタデータ確認、Sheetsは選択したスプレッドシートの読み込みに使います。
+Sheetsは入力されたスプレッドシートの読み込みに使います。
+ログインユーザーがアクセス権を持たないスプレッドシートは読み込めません。
+
+## 完全無料で使う場合
+
+この版は、GitHub PagesとGoogle OAuth Client IDだけで動かす想定です。
+
+- GitHub Pagesは無料枠で公開できます。
+- Google CloudのOAuth Client ID作成に課金設定は不要です。
+- API Keyは不要です。
+- Google Sheets APIは読み取りだけに使います。
+- この段階ではGmail APIを使わず、メール下書き作成も送信も行いません。
+
+後でGmail下書き作成を追加する場合も、標準的な利用は追加費用なしで使えますが、GoogleのAPI割当や送信制限はあります。
 
 ## スプレッドシート
 

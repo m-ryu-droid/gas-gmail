@@ -31,8 +31,11 @@
 
           <div id="configWarning" class="notice warning" hidden></div>
 
+          <label class="field-label" for="spreadsheetInput">スプレッドシートURLまたはID</label>
+          <input id="spreadsheetInput" class="text-input" type="text" placeholder="https://docs.google.com/spreadsheets/d/...">
+
           <div class="actions">
-            <button id="pickerButton" class="primary-button" type="button" disabled>スプレッドシートを選択</button>
+            <button id="loadSpreadsheetButton" class="primary-button" type="button" disabled>読み込み</button>
             <button id="reloadButton" class="ghost-button" type="button" disabled>再読み込み</button>
           </div>
 
@@ -92,7 +95,7 @@
           </div>
 
           <div id="emptyState" class="empty-state">
-            Googleログイン後、スプレッドシートを選択してください。
+            Googleログイン後、スプレッドシートURLまたはIDを入力してください。
           </div>
 
           <div id="previewContent" class="preview-content" hidden>

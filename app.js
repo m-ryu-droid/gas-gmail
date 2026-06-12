@@ -8,7 +8,6 @@
     'openid',
     'email',
     'profile',
-    'https://www.googleapis.com/auth/drive.metadata.readonly',
     'https://www.googleapis.com/auth/spreadsheets.readonly',
   ].join(' ');
 
@@ -46,7 +45,8 @@
       'accountStatus',
       'authorizeButton',
       'signoutButton',
-      'pickerButton',
+      'spreadsheetInput',
+      'loadSpreadsheetButton',
       'reloadButton',
       'selectedFileName',
       'loadSummary',
@@ -72,7 +72,7 @@
   function bindEvents() {
     els.authorizeButton.addEventListener('click', authorize);
     els.signoutButton.addEventListener('click', signOut);
-    els.pickerButton.addEventListener('click', openPicker);
+    els.loadSpreadsheetButton.addEventListener('click', loadSpreadsheetFromInput);
     els.reloadButton.addEventListener('click', reloadSelectedSpreadsheet);
     els.saveTemplateButton.addEventListener('click', saveTemplate);
     els.showAllButton.addEventListener('click', () => setFilter('all'));
@@ -100,7 +100,7 @@
   }
 
   function loadGoogleApiClient() {
-    window.gapi.load('client:picker', async () => {
+    window.gapi.load('client', async () => {
       try {
         if (!isConfigReady()) {
           state.librariesReady = true;
@@ -109,7 +109,6 @@
         }
 
         await window.gapi.client.init({
-          apiKey: CONFIG.googleApiKey,
           discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
         });
 
@@ -130,7 +129,7 @@
 
   function authorize() {
     if (!isConfigReady()) {
-      setNotice('先に config.js の googleClientId と googleApiKey を設定してください。');
+      setNotice('先に config.js の googleClientId を設定してください。');
       return;
     }
 
@@ -223,39 +222,23 @@
     renderPreview();
   }
 
-  function openPicker() {
+  function loadSpreadsheetFromInput() {
     if (!state.accessToken) {
       setNotice('先にGoogleログインをしてください。');
       return;
     }
 
-    const view = new window.google.picker.DocsView(window.google.picker.ViewId.SPREADSHEETS)
-      .setIncludeFolders(false)
-      .setSelectFolderEnabled(false);
-
-    const picker = new window.google.picker.PickerBuilder()
-      .setDeveloperKey(CONFIG.googleApiKey)
-      .setOAuthToken(state.accessToken)
-      .setAppId(getAppIdFromClientId(CONFIG.googleClientId))
-      .addView(view)
-      .setCallback(handlePickerResponse)
-      .build();
-
-    picker.setVisible(true);
-  }
-
-  function handlePickerResponse(data) {
-    if (data.action !== window.google.picker.Action.PICKED) {
+    const spreadsheetId = extractSpreadsheetId(els.spreadsheetInput.value);
+    if (!spreadsheetId) {
+      setNotice('スプレッドシートURL、またはスプレッドシートIDを入力してください。');
       return;
     }
 
-    const doc = data.docs[0];
     state.spreadsheet = {
-      id: doc.id,
-      name: doc.name,
-      url: doc.url,
+      id: spreadsheetId,
+      name: spreadsheetId,
     };
-    els.selectedFileName.textContent = doc.name;
+    els.selectedFileName.textContent = spreadsheetId;
     readAllowedSheet();
   }
 
@@ -272,9 +255,11 @@
     try {
       const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: state.spreadsheet.id,
-        fields: 'sheets.properties.title',
+        fields: 'properties.title,sheets.properties.title',
       });
       const sheetTitles = spreadsheet.result.sheets.map((sheet) => sheet.properties.title);
+      state.spreadsheet.name = spreadsheet.result.properties.title || state.spreadsheet.id;
+      els.selectedFileName.textContent = state.spreadsheet.name;
 
       if (!sheetTitles.includes(SHEET_NAME)) {
         throw new Error('選択したブックに「' + SHEET_NAME + '」シートがありません。');
@@ -475,7 +460,7 @@
 
   function setLoading(isLoading) {
     els.reloadButton.disabled = isLoading || !state.spreadsheet;
-    els.pickerButton.disabled = isLoading || !state.accessToken;
+    els.loadSpreadsheetButton.disabled = isLoading || !state.accessToken;
     els.loadSummary.textContent = isLoading ? '読み込み中...' : els.loadSummary.textContent;
   }
 
@@ -484,7 +469,7 @@
     els.accountStatus.textContent = loggedIn ? state.user.email : '未ログイン';
     els.authorizeButton.textContent = loggedIn ? '再認証' : 'Googleでログイン';
     els.signoutButton.hidden = !loggedIn;
-    els.pickerButton.disabled = !loggedIn;
+    els.loadSpreadsheetButton.disabled = !loggedIn;
     els.reloadButton.disabled = !loggedIn || !state.spreadsheet;
     els.saveTemplateButton.disabled = !loggedIn;
     els.selectedFileName.textContent = state.spreadsheet ? state.spreadsheet.name : '未選択';
@@ -498,14 +483,30 @@
     }
 
     els.configWarning.hidden = false;
-    els.configWarning.textContent = 'config.js に Google OAuth Client ID と API Key を設定してください。';
+    els.configWarning.textContent = 'config.js に Google OAuth Client ID を設定してください。';
   }
 
   function isConfigReady() {
     return CONFIG.googleClientId
-      && CONFIG.googleApiKey
       && !CONFIG.googleClientId.includes('YOUR_GOOGLE_OAUTH_CLIENT_ID')
-      && !CONFIG.googleApiKey.includes('YOUR_GOOGLE_API_KEY');
+  }
+
+  function extractSpreadsheetId(input) {
+    const value = String(input || '').trim();
+    if (!value) {
+      return '';
+    }
+
+    const match = value.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) {
+      return match[1];
+    }
+
+    if (/^[a-zA-Z0-9-_]{20,}$/.test(value)) {
+      return value;
+    }
+
+    return '';
   }
 
   function setNotice(message, type) {
@@ -514,7 +515,4 @@
     els.configWarning.textContent = message;
   }
 
-  function getAppIdFromClientId(clientId) {
-    return String(clientId || '').split('-')[0];
-  }
 }());
