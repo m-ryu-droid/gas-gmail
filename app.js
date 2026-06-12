@@ -87,8 +87,12 @@
     els.showPendingButton.addEventListener('click', () => setFilter('pending'));
     els.createTestDraftButton.addEventListener('click', createTestDraft);
     els.createDraftsButton.addEventListener('click', createDraftsForPendingRows);
-    els.sendTestButton.addEventListener('click', sendTestEmail);
-    els.sendEmailsButton.addEventListener('click', sendPendingRows);
+    if (els.sendTestButton) {
+      els.sendTestButton.addEventListener('click', sendTestEmail);
+    }
+    if (els.sendEmailsButton) {
+      els.sendEmailsButton.addEventListener('click', sendPendingRows);
+    }
 
     [els.subjectTemplate, els.bodyTemplate, els.signatureTemplate].forEach((el) => {
       el.addEventListener('input', renderPreview);
@@ -853,8 +857,12 @@
     const hasPending = state.rows.some((row) => isPending(row));
     els.createTestDraftButton.disabled = forceDisabled || !loggedIn || !hasRows;
     els.createDraftsButton.disabled = forceDisabled || !loggedIn || !hasPending;
-    els.sendTestButton.disabled = forceDisabled || !loggedIn || !hasRows;
-    els.sendEmailsButton.disabled = forceDisabled || !loggedIn || !hasPending;
+    if (els.sendTestButton) {
+      els.sendTestButton.disabled = forceDisabled || !loggedIn || !hasRows;
+    }
+    if (els.sendEmailsButton) {
+      els.sendEmailsButton.disabled = forceDisabled || !loggedIn || !hasPending;
+    }
   }
 
   function updateUiState() {
