@@ -1,5 +1,5 @@
 window.APP_CONFIG = {
-  googleClientId: '98419556061-l2kh0kas1cg3nul8jmdl8tns8c195c2b.apps.googleusercontent.com',
+  googleClientId: '98419556061-82jp0bjtk1sog0lt75i9j9bcqf2qun03.apps.googleusercontent.com',
   allowedSheetName: 'mail_recipients',
   allowedDomains: ['co-success.jp'],
   allowedEmails: [],
