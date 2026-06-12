@@ -37,12 +37,28 @@ window.APP_CONFIG = {
   googleClientId: 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com',
   googleApiKey: 'YOUR_GOOGLE_API_KEY',
   allowedSheetName: 'mail_recipients',
+  allowedDomains: ['example.co.jp'],
   allowedEmails: [],
 };
 ```
 
+`allowedDomains` に会社のGoogle Workspaceドメインを入れると、そのドメインのメールアドレスだけアプリ内で許可します。
+
+```js
+allowedDomains: ['your-company.co.jp'],
+```
+
 `allowedEmails` は空配列ならアプリ側ではメールアドレス制限をしません。
+個別の人だけ許可したい場合は、次のように指定できます。
+
+```js
+allowedEmails: ['person1@your-company.co.jp', 'person2@your-company.co.jp'],
+```
+
 メールアドレスをGitHubに置きたくない場合は、Google Cloud側のOAuthテストユーザーで制限してください。
+
+会社の人だけにしたい場合は、Google Cloud側でもOAuth同意画面のユーザータイプを `Internal` にするのが一番安全です。
+`Internal` はGoogle Workspace組織内のユーザー向けです。個人Gmailだけの環境では選べません。
 
 ## Google Cloud側で必要な設定
 
@@ -53,6 +69,9 @@ window.APP_CONFIG = {
 5. OAuth Client IDを作成します。
 6. アプリ種別は `Web application` を選びます。
 7. Authorized JavaScript originsにGitHub PagesのURLを登録します。
+
+会社のGoogle Workspaceアカウントだけに閉じる場合は、OAuth同意画面のAudienceで `Internal` を選びます。
+これにより、会社のGoogle Workspace組織外のGoogleアカウントはOAuth認証を通れません。
 
 例:
 

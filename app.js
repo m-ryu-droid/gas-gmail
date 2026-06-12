@@ -116,6 +116,7 @@
         state.tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: CONFIG.googleClientId,
           scope: SCOPES,
+          hd: getHostedDomainHint(),
           callback: handleTokenResponse,
         });
 
@@ -154,7 +155,7 @@
       state.user = await fetchGoogleUser();
       if (!isAllowedUser(state.user.email)) {
         signOut(false);
-        setNotice('このGoogleアカウントは、このページの利用許可リストに含まれていません。');
+        setNotice('このGoogleアカウントは、このページの利用許可対象ではありません。会社のGoogleアカウントでログインしてください。');
         return;
       }
       loadTemplate();
@@ -181,11 +182,29 @@
 
   function isAllowedUser(email) {
     const allowedEmails = Array.isArray(CONFIG.allowedEmails) ? CONFIG.allowedEmails : [];
-    if (allowedEmails.length === 0) {
-      return true;
+    const allowedDomains = Array.isArray(CONFIG.allowedDomains) ? CONFIG.allowedDomains : [];
+    const normalizedEmail = String(email || '').toLowerCase();
+
+    if (allowedEmails.length > 0) {
+      return allowedEmails.map((item) => item.toLowerCase()).includes(normalizedEmail);
     }
 
-    return allowedEmails.map((item) => item.toLowerCase()).includes(String(email).toLowerCase());
+    if (allowedDomains.length > 0) {
+      return allowedDomains.some((domain) => {
+        return normalizedEmail.endsWith('@' + String(domain).toLowerCase().replace(/^@/, ''));
+      });
+    }
+
+    return true;
+  }
+
+  function getHostedDomainHint() {
+    const allowedDomains = Array.isArray(CONFIG.allowedDomains) ? CONFIG.allowedDomains : [];
+    if (allowedDomains.length !== 1) {
+      return undefined;
+    }
+
+    return String(allowedDomains[0]).replace(/^@/, '');
   }
 
   function signOut(revokeToken) {
