@@ -278,7 +278,7 @@
     } catch (error) {
       state.rows = [];
       els.loadSummary.textContent = '読み込み失敗';
-      setNotice(error.message);
+      setNotice(getErrorMessage(error));
       renderPreview();
     } finally {
       setLoading(false);
@@ -512,7 +512,35 @@
   function setNotice(message, type) {
     els.configWarning.hidden = false;
     els.configWarning.className = type === 'success' ? 'notice success' : 'notice warning';
-    els.configWarning.textContent = message;
+    els.configWarning.textContent = message || 'エラー内容を取得できませんでした。ブラウザの開発者ツールでConsoleを確認してください。';
+  }
+
+  function getErrorMessage(error) {
+    if (!error) {
+      return '';
+    }
+
+    if (error.result && error.result.error) {
+      const apiError = error.result.error;
+      return [
+        apiError.message,
+        apiError.status ? 'status: ' + apiError.status : '',
+        apiError.code ? 'code: ' + apiError.code : '',
+      ].filter(Boolean).join('\n');
+    }
+
+    if (error.body) {
+      try {
+        const body = JSON.parse(error.body);
+        if (body.error && body.error.message) {
+          return body.error.message;
+        }
+      } catch (parseError) {
+        return error.body;
+      }
+    }
+
+    return error.message || String(error);
   }
 
 }());
