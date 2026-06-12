@@ -10,6 +10,7 @@
     'profile',
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/gmail.compose',
+    'https://www.googleapis.com/auth/gmail.send',
   ].join(' ');
 
   const DEFAULT_TEMPLATE = {
@@ -68,6 +69,8 @@
       'showPendingButton',
       'createTestDraftButton',
       'createDraftsButton',
+      'sendTestButton',
+      'sendEmailsButton',
     ].forEach((id) => {
       els[id] = document.getElementById(id);
     });
@@ -83,6 +86,8 @@
     els.showPendingButton.addEventListener('click', () => setFilter('pending'));
     els.createTestDraftButton.addEventListener('click', createTestDraft);
     els.createDraftsButton.addEventListener('click', createDraftsForPendingRows);
+    els.sendTestButton.addEventListener('click', sendTestEmail);
+    els.sendEmailsButton.addEventListener('click', sendPendingRows);
 
     [els.subjectTemplate, els.bodyTemplate, els.signatureTemplate].forEach((el) => {
       el.addEventListener('input', renderPreview);
@@ -465,6 +470,112 @@
     );
   }
 
+  async function sendTestEmail() {
+    const row = getVisibleRows()[state.selectedRowIndex] || state.rows[0];
+    if (!row) {
+      setNotice('先に宛先データを読み込んでください。');
+      return;
+    }
+
+    const testTo = state.user && state.user.email;
+    if (!testTo) {
+      setNotice('テスト送信にはGoogleログインが必要です。');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      testTo + ' 宛にテストメールを送信します。\nこれは実際に送信されます。続けますか？'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDraftButtonsDisabled(true);
+      const rendered = renderMail(row);
+      await sendGmailMessage({
+        to: testTo,
+        subject: '[TEST] ' + rendered.subject,
+        body: rendered.body,
+      });
+      setNotice('テストメールを送信しました。受信箱を確認してください。', 'success');
+    } catch (error) {
+      setNotice('テスト送信に失敗しました: ' + getErrorMessage(error));
+    } finally {
+      setDraftButtonsDisabled(false);
+    }
+  }
+
+  async function sendPendingRows() {
+    const pendingRows = state.rows.filter((row) => isPending(row));
+    if (pendingRows.length === 0) {
+      setNotice('送信対象がありません。');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      pendingRows.length + '件のメールを実際に送信します。\nこの操作はGmailから送信され、取り消せません。続けますか？'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const typed = window.prompt('誤送信防止のため「送信」と入力してください。');
+    if (typed !== '送信') {
+      setNotice('送信をキャンセルしました。');
+      return;
+    }
+
+    setDraftButtonsDisabled(true);
+    let sentCount = 0;
+    let errorCount = 0;
+
+    for (const row of pendingRows) {
+      try {
+        if (!isValidEmail(row['メールアドレス'])) {
+          throw new Error('メールアドレスが不正です: ' + row['メールアドレス']);
+        }
+
+        const rendered = renderMail(row);
+        await sendGmailMessage({
+          to: row['メールアドレス'],
+          subject: rendered.subject,
+          body: rendered.body,
+        });
+
+        const sentAt = new Date();
+        await updateRowStatus(row, {
+          status: '送信済み',
+          draftCreatedAt: '',
+          sentAt: sentAt,
+          errorMessage: '',
+        });
+        row['ステータス'] = '送信済み';
+        row['送信日時'] = formatDateTime(sentAt);
+        row['エラー内容'] = '';
+        sentCount += 1;
+      } catch (error) {
+        const message = getErrorMessage(error);
+        await updateRowStatus(row, {
+          status: 'エラー',
+          draftCreatedAt: '',
+          sentAt: '',
+          errorMessage: message,
+        });
+        row['ステータス'] = 'エラー';
+        row['エラー内容'] = message;
+        errorCount += 1;
+      }
+      renderPreview();
+    }
+
+    setDraftButtonsDisabled(false);
+    setNotice(
+      '送信が完了しました。送信: ' + sentCount + '件 / エラー: ' + errorCount + '件。',
+      errorCount ? 'warning' : 'success'
+    );
+  }
+
   async function createGmailDraft(mail) {
     const raw = buildRawMessage(mail);
     return window.gapi.client.gmail.users.drafts.create({
@@ -477,21 +588,49 @@
     });
   }
 
+  async function sendGmailMessage(mail) {
+    const raw = buildRawMessage(mail);
+    return window.gapi.client.gmail.users.messages.send({
+      userId: 'me',
+      resource: {
+        raw: raw,
+      },
+    });
+  }
+
   function buildRawMessage(mail) {
     const lines = [
-      'To: ' + encodeMailHeader(mail.to),
-      'Subject: ' + encodeMailHeader(mail.subject),
+      'To: ' + sanitizeHeader(mail.to),
+      'Subject: ' + encodeMimeHeader(mail.subject),
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=UTF-8',
-      'Content-Transfer-Encoding: 8bit',
+      'Content-Transfer-Encoding: base64',
       '',
-      mail.body,
+      base64EncodeUtf8(mail.body),
     ];
     return base64UrlEncode(lines.join('\r\n'));
   }
 
-  function encodeMailHeader(value) {
+  function sanitizeHeader(value) {
     return String(value || '').replace(/[\r\n]/g, ' ');
+  }
+
+  function encodeMimeHeader(value) {
+    const sanitized = sanitizeHeader(value);
+    if (/^[\x00-\x7F]*$/.test(sanitized)) {
+      return sanitized;
+    }
+
+    return '=?UTF-8?B?' + base64EncodeUtf8(sanitized) + '?=';
+  }
+
+  function base64EncodeUtf8(value) {
+    const bytes = new TextEncoder().encode(String(value || ''));
+    let binary = '';
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary);
   }
 
   function base64UrlEncode(value) {
@@ -503,19 +642,31 @@
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
-  async function updateRowStatus(row, status, draftCreatedAt, errorMessage) {
+  async function updateRowStatus(row, statusOrOptions, draftCreatedAt, errorMessage) {
+    const options = typeof statusOrOptions === 'object'
+      ? statusOrOptions
+      : {
+          status: statusOrOptions,
+          draftCreatedAt: draftCreatedAt,
+          sentAt: '',
+          errorMessage: errorMessage,
+        };
     const updates = [
       {
         header: 'ステータス',
-        value: status,
+        value: options.status,
       },
       {
         header: '下書き作成日時',
-        value: draftCreatedAt ? formatDateTime(draftCreatedAt) : '',
+        value: options.draftCreatedAt ? formatDateTime(options.draftCreatedAt) : '',
+      },
+      {
+        header: '送信日時',
+        value: options.sentAt ? formatDateTime(options.sentAt) : '',
       },
       {
         header: 'エラー内容',
-        value: errorMessage || '',
+        value: options.errorMessage || '',
       },
     ].map((item) => {
       return {
@@ -660,6 +811,8 @@
     const hasPending = state.rows.some((row) => isPending(row));
     els.createTestDraftButton.disabled = forceDisabled || !loggedIn || !hasRows;
     els.createDraftsButton.disabled = forceDisabled || !loggedIn || !hasPending;
+    els.sendTestButton.disabled = forceDisabled || !loggedIn || !hasRows;
+    els.sendEmailsButton.disabled = forceDisabled || !loggedIn || !hasPending;
   }
 
   function updateUiState() {
