@@ -3,12 +3,13 @@
 
   const CONFIG = window.APP_CONFIG || {};
   const SHEET_NAME = CONFIG.allowedSheetName || 'mail_recipients';
-  const REQUIRED_HEADERS = ['会社名', '氏名', 'メールアドレス', 'ステータス', '送信日時', 'エラー内容'];
+  const REQUIRED_HEADERS = ['会社名', '氏名', 'メールアドレス', 'ステータス', '下書き作成日時', '送信日時', 'エラー内容'];
   const SCOPES = [
     'openid',
     'email',
     'profile',
-    'https://www.googleapis.com/auth/spreadsheets.readonly',
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/gmail.compose',
   ].join(' ');
 
   const DEFAULT_TEMPLATE = {
@@ -23,6 +24,7 @@
     user: null,
     spreadsheet: null,
     rows: [],
+    headerMap: {},
     selectedRowIndex: 0,
     filter: 'all',
     librariesReady: false,
@@ -64,6 +66,8 @@
       'previewBody',
       'showAllButton',
       'showPendingButton',
+      'createTestDraftButton',
+      'createDraftsButton',
     ].forEach((id) => {
       els[id] = document.getElementById(id);
     });
@@ -77,6 +81,8 @@
     els.saveTemplateButton.addEventListener('click', saveTemplate);
     els.showAllButton.addEventListener('click', () => setFilter('all'));
     els.showPendingButton.addEventListener('click', () => setFilter('pending'));
+    els.createTestDraftButton.addEventListener('click', createTestDraft);
+    els.createDraftsButton.addEventListener('click', createDraftsForPendingRows);
 
     [els.subjectTemplate, els.bodyTemplate, els.signatureTemplate].forEach((el) => {
       el.addEventListener('input', renderPreview);
@@ -109,7 +115,10 @@
         }
 
         await window.gapi.client.init({
-          discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'],
+          discoveryDocs: [
+            'https://sheets.googleapis.com/$discovery/rest?version=v4',
+            'https://gmail.googleapis.com/$discovery/rest?version=v1',
+          ],
         });
 
         state.tokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -122,7 +131,7 @@
         state.librariesReady = true;
         updateUiState();
       } catch (error) {
-        setNotice('Google APIの初期化に失敗しました: ' + error.message);
+        setNotice('Google APIの初期化に失敗しました: ' + getErrorMessage(error));
       }
     });
   }
@@ -161,7 +170,7 @@
       updateUiState();
       renderPreview();
     } catch (error) {
-      setNotice('ログイン情報を取得できませんでした: ' + error.message);
+      setNotice('ログイン情報を取得できませんでした: ' + getErrorMessage(error));
     }
   }
 
@@ -215,6 +224,7 @@
     state.user = null;
     state.spreadsheet = null;
     state.rows = [];
+    state.headerMap = {};
     state.selectedRowIndex = 0;
     window.gapi.client.setToken(null);
     setDefaultTemplate();
@@ -237,6 +247,7 @@
     state.spreadsheet = {
       id: spreadsheetId,
       name: spreadsheetId,
+      sheetId: null,
     };
     els.selectedFileName.textContent = spreadsheetId;
     readAllowedSheet();
@@ -255,16 +266,20 @@
     try {
       const spreadsheet = await window.gapi.client.sheets.spreadsheets.get({
         spreadsheetId: state.spreadsheet.id,
-        fields: 'properties.title,sheets.properties.title',
+        fields: 'properties.title,sheets.properties(sheetId,title)',
       });
-      const sheetTitles = spreadsheet.result.sheets.map((sheet) => sheet.properties.title);
+      const targetSheet = spreadsheet.result.sheets
+        .map((sheet) => sheet.properties)
+        .find((properties) => properties.title === SHEET_NAME);
+
       state.spreadsheet.name = spreadsheet.result.properties.title || state.spreadsheet.id;
       els.selectedFileName.textContent = state.spreadsheet.name;
 
-      if (!sheetTitles.includes(SHEET_NAME)) {
+      if (!targetSheet) {
         throw new Error('選択したブックに「' + SHEET_NAME + '」シートがありません。');
       }
 
+      state.spreadsheet.sheetId = targetSheet.sheetId;
       const range = "'" + SHEET_NAME.replace(/'/g, "''") + "'!A:Z";
       const valuesResponse = await window.gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId: state.spreadsheet.id,
@@ -274,6 +289,7 @@
       state.rows = parseRecipientRows(valuesResponse.result.values || []);
       state.selectedRowIndex = 0;
       els.loadSummary.textContent = state.rows.length + '件を読み込みました';
+      setNotice('読み込みました。下書き作成前にプレビューを確認してください。', 'success');
       renderPreview();
     } catch (error) {
       state.rows = [];
@@ -291,8 +307,14 @@
     }
 
     const headers = values[0].map((header) => String(header).trim());
-    const missingHeaders = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
+    state.headerMap = {};
+    headers.forEach((header, index) => {
+      if (header) {
+        state.headerMap[header] = index;
+      }
+    });
 
+    const missingHeaders = REQUIRED_HEADERS.filter((header) => !headers.includes(header));
     if (missingHeaders.length > 0) {
       throw new Error('必要な列がありません: ' + missingHeaders.join(' / '));
     }
@@ -361,6 +383,167 @@
     return 'gmail-draft-prep-template:' + email;
   }
 
+  async function createTestDraft() {
+    const row = getVisibleRows()[state.selectedRowIndex] || state.rows[0];
+    if (!row) {
+      setNotice('先に宛先データを読み込んでください。');
+      return;
+    }
+
+    const testTo = state.user && state.user.email;
+    if (!testTo) {
+      setNotice('テスト下書き作成にはGoogleログインが必要です。');
+      return;
+    }
+
+    try {
+      setDraftButtonsDisabled(true);
+      const rendered = renderMail(row);
+      await createGmailDraft({
+        to: testTo,
+        subject: '[TEST] ' + rendered.subject,
+        body: rendered.body,
+      });
+      setNotice('テスト下書きを作成しました。Gmailの下書きフォルダを確認してください。', 'success');
+    } catch (error) {
+      setNotice('テスト下書き作成に失敗しました: ' + getErrorMessage(error));
+    } finally {
+      setDraftButtonsDisabled(false);
+    }
+  }
+
+  async function createDraftsForPendingRows() {
+    const pendingRows = state.rows.filter((row) => isPending(row));
+    if (pendingRows.length === 0) {
+      setNotice('下書き作成対象がありません。');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      pendingRows.length + '件のGmail下書きを作成します。\nこの時点では送信されません。続けますか？'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDraftButtonsDisabled(true);
+    let createdCount = 0;
+    let errorCount = 0;
+
+    for (const row of pendingRows) {
+      try {
+        if (!isValidEmail(row['メールアドレス'])) {
+          throw new Error('メールアドレスが不正です: ' + row['メールアドレス']);
+        }
+
+        const rendered = renderMail(row);
+        await createGmailDraft({
+          to: row['メールアドレス'],
+          subject: rendered.subject,
+          body: rendered.body,
+        });
+
+        await updateRowStatus(row, '下書き作成済み', new Date(), '');
+        row['ステータス'] = '下書き作成済み';
+        row['下書き作成日時'] = formatDateTime(new Date());
+        row['エラー内容'] = '';
+        createdCount += 1;
+      } catch (error) {
+        const message = getErrorMessage(error);
+        await updateRowStatus(row, 'エラー', '', message);
+        row['ステータス'] = 'エラー';
+        row['エラー内容'] = message;
+        errorCount += 1;
+      }
+      renderPreview();
+    }
+
+    setDraftButtonsDisabled(false);
+    setNotice(
+      '下書き作成が完了しました。作成: ' + createdCount + '件 / エラー: ' + errorCount + '件。Gmailの下書きフォルダを確認してください。',
+      errorCount ? 'warning' : 'success'
+    );
+  }
+
+  async function createGmailDraft(mail) {
+    const raw = buildRawMessage(mail);
+    return window.gapi.client.gmail.users.drafts.create({
+      userId: 'me',
+      resource: {
+        message: {
+          raw: raw,
+        },
+      },
+    });
+  }
+
+  function buildRawMessage(mail) {
+    const lines = [
+      'To: ' + encodeMailHeader(mail.to),
+      'Subject: ' + encodeMailHeader(mail.subject),
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: 8bit',
+      '',
+      mail.body,
+    ];
+    return base64UrlEncode(lines.join('\r\n'));
+  }
+
+  function encodeMailHeader(value) {
+    return String(value || '').replace(/[\r\n]/g, ' ');
+  }
+
+  function base64UrlEncode(value) {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  async function updateRowStatus(row, status, draftCreatedAt, errorMessage) {
+    const updates = [
+      {
+        header: 'ステータス',
+        value: status,
+      },
+      {
+        header: '下書き作成日時',
+        value: draftCreatedAt ? formatDateTime(draftCreatedAt) : '',
+      },
+      {
+        header: 'エラー内容',
+        value: errorMessage || '',
+      },
+    ].map((item) => {
+      return {
+        range: "'" + SHEET_NAME.replace(/'/g, "''") + "'!" + toA1(state.headerMap[item.header], row.__rowNumber),
+        values: [[item.value]],
+      };
+    });
+
+    return window.gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: state.spreadsheet.id,
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: updates,
+      },
+    });
+  }
+
+  function toA1(columnIndex, rowNumber) {
+    let columnNumber = columnIndex + 1;
+    let label = '';
+    while (columnNumber > 0) {
+      const remainder = (columnNumber - 1) % 26;
+      label = String.fromCharCode(65 + remainder) + label;
+      columnNumber = Math.floor((columnNumber - 1) / 26);
+    }
+    return label + rowNumber;
+  }
+
   function renderPreview() {
     const rows = getVisibleRows();
     const hasRows = rows.length > 0;
@@ -376,6 +559,7 @@
       els.previewTo.textContent = '-';
       els.previewSubject.textContent = '-';
       els.previewBody.textContent = '';
+      updateUiState();
       return;
     }
 
@@ -384,7 +568,7 @@
     }
 
     const pendingCount = state.rows.filter((row) => isPending(row)).length;
-    els.previewSummary.textContent = '全' + state.rows.length + '件 / 未送信' + pendingCount + '件';
+    els.previewSummary.textContent = '全' + state.rows.length + '件 / 未作成' + pendingCount + '件';
 
     els.recipientTableBody.innerHTML = '';
     rows.forEach((row, index) => {
@@ -407,7 +591,7 @@
         row['会社名'] || '-',
         row.__recipientName,
         row['メールアドレス'] || '-',
-        row['ステータス'] || '未送信',
+        row['ステータス'] || '未作成',
       ].forEach((value) => {
         const td = document.createElement('td');
         td.textContent = value;
@@ -421,6 +605,7 @@
     els.previewTo.textContent = selectedRow['メールアドレス'] || '-';
     els.previewSubject.textContent = rendered.subject;
     els.previewBody.textContent = rendered.body;
+    updateUiState();
   }
 
   function renderMail(row) {
@@ -455,13 +640,26 @@
 
   function isPending(row) {
     const status = String(row['ステータス'] || '').trim();
-    return !status || status === '未送信' || status === '未作成';
+    return !status || status === '未送信' || status === '未作成' || status === 'エラー';
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
   }
 
   function setLoading(isLoading) {
-    els.reloadButton.disabled = isLoading || !state.spreadsheet;
     els.loadSpreadsheetButton.disabled = isLoading || !state.accessToken;
+    els.reloadButton.disabled = isLoading || !state.spreadsheet;
     els.loadSummary.textContent = isLoading ? '読み込み中...' : els.loadSummary.textContent;
+    setDraftButtonsDisabled(isLoading);
+  }
+
+  function setDraftButtonsDisabled(forceDisabled) {
+    const loggedIn = Boolean(state.user && state.accessToken);
+    const hasRows = state.rows.length > 0;
+    const hasPending = state.rows.some((row) => isPending(row));
+    els.createTestDraftButton.disabled = forceDisabled || !loggedIn || !hasRows;
+    els.createDraftsButton.disabled = forceDisabled || !loggedIn || !hasPending;
   }
 
   function updateUiState() {
@@ -473,7 +671,8 @@
     els.reloadButton.disabled = !loggedIn || !state.spreadsheet;
     els.saveTemplateButton.disabled = !loggedIn;
     els.selectedFileName.textContent = state.spreadsheet ? state.spreadsheet.name : '未選択';
-    els.loadSummary.textContent = state.rows.length ? state.rows.length + '件を読み込みました' : '-';
+    els.loadSummary.textContent = state.rows.length ? state.rows.length + '件を読み込みました' : els.loadSummary.textContent || '-';
+    setDraftButtonsDisabled(false);
   }
 
   function showConfigWarningIfNeeded() {
@@ -488,7 +687,7 @@
 
   function isConfigReady() {
     return CONFIG.googleClientId
-      && !CONFIG.googleClientId.includes('YOUR_GOOGLE_OAUTH_CLIENT_ID')
+      && !CONFIG.googleClientId.includes('YOUR_GOOGLE_OAUTH_CLIENT_ID');
   }
 
   function extractSpreadsheetId(input) {
@@ -543,4 +742,21 @@
     return error.message || String(error);
   }
 
+  function formatDateTime(value) {
+    if (!value) {
+      return '';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    const pad = (number) => String(number).padStart(2, '0');
+    return [
+      date.getFullYear(),
+      pad(date.getMonth() + 1),
+      pad(date.getDate()),
+    ].join('-') + ' ' + [
+      pad(date.getHours()),
+      pad(date.getMinutes()),
+      pad(date.getSeconds()),
+    ].join(':');
+  }
 }());

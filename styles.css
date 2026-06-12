@@ -8,6 +8,8 @@
   --accent: #146c5f;
   --accent-strong: #0f554b;
   --accent-soft: #e4f3ef;
+  --danger: #a33b2f;
+  --danger-strong: #842f26;
   --warning: #8a5a00;
   --warning-bg: #fff6d8;
   --success: #146c43;
@@ -107,7 +109,8 @@ h3 {
 .actions,
 .row-heading,
 .segmented-control,
-.helper-line {
+.helper-line,
+.draft-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -128,6 +131,7 @@ h3 {
 
 .primary-button,
 .ghost-button,
+.danger-button,
 .segment {
   min-height: 38px;
   border: 1px solid transparent;
@@ -143,6 +147,15 @@ h3 {
 
 .primary-button:hover:not(:disabled) {
   background: var(--accent-strong);
+}
+
+.danger-button {
+  background: var(--danger);
+  color: #fff;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: var(--danger-strong);
 }
 
 .ghost-button {
@@ -173,10 +186,7 @@ h3 {
 }
 
 .setup-panel,
-.template-panel {
-  padding: 18px;
-}
-
+.template-panel,
 .preview-panel {
   padding: 18px;
 }
@@ -201,6 +211,7 @@ h3 {
   margin-bottom: 14px;
   border-radius: 6px;
   padding: 10px 12px;
+  white-space: pre-wrap;
   font-size: 14px;
   line-height: 1.45;
 }
@@ -291,9 +302,16 @@ h3 {
   min-height: 120px;
 }
 
-.helper-line {
+.helper-line,
+.draft-actions {
   flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.draft-actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
 }
 
 .segmented-control {
@@ -445,7 +463,8 @@ h3 {
 
   .account-panel,
   .actions,
-  .row-heading {
+  .row-heading,
+  .draft-actions {
     align-items: stretch;
     flex-direction: column;
   }
@@ -456,7 +475,8 @@ h3 {
   }
 
   .primary-button,
-  .ghost-button {
+  .ghost-button,
+  .danger-button {
     width: 100%;
   }
 

@@ -52,7 +52,7 @@
 
           <div class="columns-box">
             <h3>必要な列</h3>
-            <p>会社名 / 氏名 / メールアドレス / ステータス / 送信日時 / エラー内容</p>
+            <p>会社名 / 氏名 / メールアドレス / ステータス / 下書き作成日時 / 送信日時 / エラー内容</p>
           </div>
         </section>
 
@@ -90,7 +90,7 @@
             </div>
             <div class="segmented-control" role="group" aria-label="表示切替">
               <button id="showAllButton" type="button" class="segment active">全件</button>
-              <button id="showPendingButton" type="button" class="segment">未送信</button>
+              <button id="showPendingButton" type="button" class="segment">未作成</button>
             </div>
           </div>
 
@@ -126,6 +126,11 @@
               </div>
               <pre id="previewBody" class="mail-body"></pre>
             </article>
+          </div>
+
+          <div class="draft-actions">
+            <button id="createTestDraftButton" class="ghost-button" type="button" disabled>テスト下書き作成</button>
+            <button id="createDraftsButton" class="danger-button" type="button" disabled>未作成分の下書きを作成</button>
           </div>
         </section>
       </main>
