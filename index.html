@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Gmail Draft Prep</title>
+    <title>Gmail Mail Sender</title>
     <link rel="stylesheet" href="./styles.css">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -12,8 +12,8 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">Gmail Draft Prep</p>
-          <h1>下書き作成前の宛先確認</h1>
+          <p class="eyebrow">Gmail Mail Sender</p>
+          <h1>メール送信前の宛先確認</h1>
         </div>
         <div class="account-panel">
           <div id="accountStatus" class="account-status">未ログイン</div>
@@ -129,9 +129,7 @@
           </div>
 
           <div class="draft-actions">
-            <button id="createTestDraftButton" class="ghost-button" type="button" disabled>テスト下書き作成</button>
             <button id="createDraftsButton" class="danger-button" type="button" disabled>未作成分の下書きを作成</button>
-            <button id="sendTestButton" class="ghost-button" type="button" disabled>テスト送信</button>
             <button id="sendEmailsButton" class="danger-button" type="button" disabled>未作成分を送信</button>
           </div>
         </section>

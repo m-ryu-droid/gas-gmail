@@ -15,7 +15,7 @@
 
   const DEFAULT_TEMPLATE = {
     subject: 'ご連絡',
-    body: '{{会社名}}\n{{宛名}}\n\nいつもお世話になっております。\n\n本文をここに入力してください。\n\n{{署名}}',
+    body: '{{会社名}}\n{{宛名}}\n\nいつもお世話になっております。\n\nこのたび、下記の件についてご連絡いたしました。\nご確認のほど、よろしくお願いいたします。\n\n{{署名}}',
     signature: '',
   };
 
@@ -68,9 +68,7 @@
       'previewBody',
       'showAllButton',
       'showPendingButton',
-      'createTestDraftButton',
       'createDraftsButton',
-      'sendTestButton',
       'sendEmailsButton',
     ].forEach((id) => {
       els[id] = document.getElementById(id);
@@ -85,11 +83,7 @@
     els.saveTemplateButton.addEventListener('click', saveTemplate);
     els.showAllButton.addEventListener('click', () => setFilter('all'));
     els.showPendingButton.addEventListener('click', () => setFilter('pending'));
-    els.createTestDraftButton.addEventListener('click', createTestDraft);
     els.createDraftsButton.addEventListener('click', createDraftsForPendingRows);
-    if (els.sendTestButton) {
-      els.sendTestButton.addEventListener('click', sendTestEmail);
-    }
     if (els.sendEmailsButton) {
       els.sendEmailsButton.addEventListener('click', sendPendingRows);
     }
@@ -434,35 +428,6 @@
     return 'gmail-draft-prep-template:' + email;
   }
 
-  async function createTestDraft() {
-    const row = getVisibleRows()[state.selectedRowIndex] || state.rows[0];
-    if (!row) {
-      setNotice('先に宛先データを読み込んでください。');
-      return;
-    }
-
-    const testTo = state.user && state.user.email;
-    if (!testTo) {
-      setNotice('テスト下書き作成にはGoogleログインが必要です。');
-      return;
-    }
-
-    try {
-      setDraftButtonsDisabled(true);
-      const rendered = renderMail(row);
-      await createGmailDraft({
-        to: testTo,
-        subject: rendered.subject,
-        body: '【テスト】このメールはテストです。\n\n' + rendered.body,
-      });
-      setNotice('テスト下書きを作成しました。Gmailの下書きフォルダを確認してください。', 'success');
-    } catch (error) {
-      setNotice('テスト下書き作成に失敗しました: ' + getErrorMessage(error));
-    } finally {
-      setDraftButtonsDisabled(false);
-    }
-  }
-
   async function createDraftsForPendingRows() {
     const pendingRows = state.rows.filter((row) => isPending(row));
     if (pendingRows.length === 0) {
@@ -514,42 +479,6 @@
       '下書き作成が完了しました。作成: ' + createdCount + '件 / エラー: ' + errorCount + '件。Gmailの下書きフォルダを確認してください。',
       errorCount ? 'warning' : 'success'
     );
-  }
-
-  async function sendTestEmail() {
-    const row = getVisibleRows()[state.selectedRowIndex] || state.rows[0];
-    if (!row) {
-      setNotice('先に宛先データを読み込んでください。');
-      return;
-    }
-
-    const testTo = state.user && state.user.email;
-    if (!testTo) {
-      setNotice('テスト送信にはGoogleログインが必要です。');
-      return;
-    }
-
-    const confirmed = window.confirm(
-      testTo + ' 宛にテストメールを送信します。\nこれは実際に送信されます。続けますか？'
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setDraftButtonsDisabled(true);
-      const rendered = renderMail(row);
-      await sendGmailMessage({
-        to: testTo,
-        subject: rendered.subject,
-        body: '【テスト】このメールはテストです。\n\n' + rendered.body,
-      });
-      setNotice('テストメールを送信しました。受信箱を確認してください。', 'success');
-    } catch (error) {
-      setNotice('テスト送信に失敗しました: ' + getErrorMessage(error));
-    } finally {
-      setDraftButtonsDisabled(false);
-    }
   }
 
   async function sendPendingRows() {
@@ -855,11 +784,7 @@
     const loggedIn = Boolean(state.user && state.accessToken);
     const hasRows = state.rows.length > 0;
     const hasPending = state.rows.some((row) => isPending(row));
-    els.createTestDraftButton.disabled = forceDisabled || !loggedIn || !hasRows;
     els.createDraftsButton.disabled = forceDisabled || !loggedIn || !hasPending;
-    if (els.sendTestButton) {
-      els.sendTestButton.disabled = forceDisabled || !loggedIn || !hasRows;
-    }
     if (els.sendEmailsButton) {
       els.sendEmailsButton.disabled = forceDisabled || !loggedIn || !hasPending;
     }
